@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      POSTGRES_USER: aquarium
+      POSTGRES_PASSWORD: aquarium123
+      POSTGRES_DB: aquarium
+    ports:
+      - "5432:5432"  # PostgreSQL port
+      - "8086:8086"  # InfluxDB line protocol port
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    command: postgres -c shared_preload_libraries=timescaledb
+
+volumes:
+  timescaledb_data: 
