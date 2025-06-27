@@ -1,31 +1,41 @@
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
 #include <ESP32Servo.h>
 
-// Pin definitions
-const int analogPin = 34;    // MH sensor analog output
-const int servoPin = 18;     // Servo control pin
-const int trigPin = 5;       // HC-SR04 Trigger pin
-const int echoPin = 4;       // HC-SR04 Echo pin
+char auth[] = "MASUKKAN_AUTH_TOKEN_ANDA"; // Masukkan Auth Token dari aplikasi Blynk
+char ssid[] = "NAMA_WIFI_ANDA";           // Masukkan nama WiFi Anda
+char pass[] = "PASSWORD_WIFI_ANDA";      // Masukkan password WiFi Anda
+
+const int analogPin = 34;      
+const int servoPin = 18;       
+const int trigPin = 5;         
+const int echoPin = 4;         
 
 // Constants
-const int LIGHT_THRESHOLD = 2000;  // Threshold for light sensor (0-4095)
-const int SERVO_OPEN_ANGLE = 180;  // Angle to dispense food
-const int SERVO_CLOSED_ANGLE = 0;  // Angle when closed
-const int FOOD_EMPTY_DISTANCE = 30; // Distance in cm when food container is empty
-const int FOOD_FULL_DISTANCE = 5;  // Distance in cm when food container is full
+const int LIGHT_THRESHOLD = 2000;      
+const int SERVO_OPEN_ANGLE = 180;      
+const int SERVO_CLOSED_ANGLE = 0;      
+const int FOOD_EMPTY_DISTANCE = 30;    
+const int FOOD_FULL_DISTANCE = 5;     
 
 Servo myServo;
+BlynkTimer timer;
 
-void setup() {
-  Serial.begin(115200);
-  
-  // Initialize servo
-  myServo.setPeriodHertz(50);
-  myServo.attach(servoPin, 500, 2400);
-  myServo.write(SERVO_CLOSED_ANGLE);  // Start with servo closed
+void dispenseFood() {
+  Serial.println("Memberi pakan...");
+  myServo.write(SERVO_OPEN_ANGLE);
+  delay(1000); 
+  myServo.write(SERVO_CLOSED_ANGLE);
+  Serial.println("Pakan selesai diberikan.");
+}
 
-  // Initialize HC-SR04 pins
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
+BLYNK_WRITE(V3) {
+  int pinValue = param.asInt();
+  if (pinValue == 1) {
+    dispenseFood();
+  }
 }
 
 float getFoodLevel() {
@@ -36,42 +46,26 @@ float getFoodLevel() {
   digitalWrite(trigPin, LOW);
 
   long duration = pulseIn(echoPin, HIGH, 30000);
-  if (duration == 0) return -1;  // Error reading
+  if (duration == 0) return -1;
 
   float distanceCm = duration * 0.0343 / 2;
   
-  // Convert distance to food level percentage
   float foodLevel = map(distanceCm, FOOD_EMPTY_DISTANCE, FOOD_FULL_DISTANCE, 0, 100);
   return constrain(foodLevel, 0, 100);
 }
 
-void sendData(float foodLevel, int lightValue) {
-  // Send data in CSV format: timestamp,food_level,light_value
-  Serial.print(millis());
-  Serial.print(",");
-  Serial.print(foodLevel);
-  Serial.print(",");
-  Serial.println(lightValue);
-}
-
-void loop() {
-  // Read light sensor
+void checkSensorsAndSendData() {
   int lightValue = analogRead(analogPin);
   
-  // Get food level
   float foodLevel = getFoodLevel();
   
-  // If light is high OR food is 0%, rotate servo to dispense food
   if (lightValue < LIGHT_THRESHOLD && foodLevel < 10) {
-    myServo.write(SERVO_OPEN_ANGLE);
-    delay(1000);  // Keep open for 1 second
-    myServo.write(SERVO_CLOSED_ANGLE);
+    dispenseFood();
   }
 
-  // Send data through Serial
-  sendData(foodLevel, lightValue);
+  Blynk.virtualWrite(V1, foodLevel); 
+  Blynk.virtualWrite(V2, lightValue); 
 
-  // Print debug information
   Serial.print("Light: ");
   Serial.print(lightValue);
   Serial.print(" | Food Level: ");
@@ -81,6 +75,24 @@ void loop() {
     Serial.print(foodLevel);
     Serial.println("%");
   }
+}
 
-  delay(5000);  // Wait 5 seconds between readings
+void setup() {
+  Serial.begin(115200);
+  
+  Blynk.begin(auth, ssid, pass);
+  
+  myServo.setPeriodHertz(50);
+  myServo.attach(servoPin, 500, 2400);
+  myServo.write(SERVO_CLOSED_ANGLE); 
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  timer.setInterval(5000L, checkSensorsAndSendData);
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
 }
